@@ -343,6 +343,12 @@ Solar Potential: ${saveImageData.solarPotential.toFixed(2)} kWh/year`);
   const coordsArray = customPolygon.getPath().getArray().map(coord => ({ lat: coord.lat(), lng: coord.lng() }));
   const staticMapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${center.lat()},${center.lng()}&zoom=${zoom}&size=600x400&maptype=satellite&path=color:0xff0000ff|weight:2${coordsArray.map(coord => `|${coord.lat},${coord.lng}`).join('')}&key=AIzaSyB4mze3dCYLlVzGEWO-cyHZYEiV01JD6iM`;
 
+  console.log("Saving image...");
+  console.log("Latitude:", center.lat());
+  console.log("Longitude:", center.lng());
+  console.log("Coords Array:", coordsArray);
+  console.log("Static Map URL:", staticMapUrl);
+
   try {
     // Calculate solar data
     const solarDataResponse = await fetch('/api/calculate_solar_data', {
@@ -352,6 +358,7 @@ Solar Potential: ${saveImageData.solarPotential.toFixed(2)} kWh/year`);
         latitude: center.lat(),
         longitude: center.lng(),
         coordsArray: coordsArray,
+        staticMapUrl: staticMapUrl,  // Add this line
         startDate: '20230101',
         endDate: '20231231',
         efficiency: 0.18
@@ -406,6 +413,7 @@ Solar Potential (Model): ${solarData.solarPotentialModel.toFixed(2)} kWh/year`);
     alert(`An error occurred: ${error.message}`);
   }
 }
+
 
 
     window.initMap = initMap;

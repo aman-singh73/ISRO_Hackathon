@@ -25,6 +25,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 UPLOAD_FOLDER = 'static/images'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'tif', 'tiff'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -89,17 +91,32 @@ def index():
 @app.route('/api/calculate_solar_data', methods=['POST'])
 def calculate_solar_data():
     data = request.json
+    logger.debug(f"Received data: {data}")
     latitude = data.get('latitude')
     longitude = data.get('longitude')
     coords = data.get('coordsArray')
+    static_map_url = data.get('staticMapUrl')  # Add this line
     start_date = data.get('startDate', '20230101')
     end_date = data.get('endDate', '20231231')
     efficiency = data.get('efficiency', 0.18)
 
-    if None in [latitude, longitude, coords]:
-        return jsonify({'error': 'Missing required fields'}), 400
+    logger.debug(f"Extracted values: lat={latitude}, lon={longitude}, coords={coords}, url={static_map_url}")  # Add this line
+    
+
+    if None in [latitude, longitude, coords, static_map_url]:
+        missing_fields = [field for field, value in {'latitude': latitude, 'longitude': longitude, 'coordsArray': coords, 'staticMapUrl': static_map_url}.items() if value is None]
+        logger.error(f"Missing fields: {missing_fields}")  # Add this line
+        return jsonify({'error': f'Missing required fields: {missing_fields}'}), 400
 
     try:
+        # Save the image
+        response = requests.get(static_map_url)
+        filename = f'map_{latitude}_{longitude}.png'
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        os.makedirs(os.path.dirname(image_path), exist_ok=True)
+        with open(image_path, 'wb') as f:
+            f.write(response.content)
+
         polygon = Polygon([(coord['lng'], coord['lat']) for coord in coords])
         polygon = orient(polygon, sign=1.0)
         area = polygon.area * (111139 * 111139)  # Approximate conversion to square meters
@@ -113,9 +130,11 @@ def calculate_solar_data():
                 avg_radiance = monthly_avg_radiance['radiance'].mean()
                 solar_potential_api = monthly_avg_radiance['total_energy'].sum()
 
-                # Call calculate_solar_potential without image_path
-                solar_potential_model = calculate_solar_potential(latitude, longitude, area=area)
-
+                # Call calculate_solar_potential with image_path
+                solar_potential_model = calculate_solar_potential(latitude, longitude, image_path=image_path)
+                if 'error' in solar_potential_model:
+                    logger.error(f"Error in calculate_solar_potential: {solar_potential_model['error']}")
+                    return jsonify({'error': solar_potential_model['error']}), 500
                 result = {
                     'area': area,
                     'avgRadiance': avg_radiance,
@@ -123,7 +142,8 @@ def calculate_solar_data():
                     'solarPotentialModel': solar_potential_model['solar_potential'],
                     'modelAvgRadiance': solar_potential_model['avg_radiance'],
                     'totalBuildingArea': solar_potential_model['total_building_area'],
-                    'imageArea': solar_potential_model['image_area']
+                    'imageArea': solar_potential_model['image_area'],
+                    'imagePath': f'/static/images/{filename}'
                 }
 
                 return jsonify(result)
@@ -133,6 +153,7 @@ def calculate_solar_data():
     except Exception as e:
         logger.error(f"Error in calculate_solar_data: {str(e)}")
         return jsonify({'error': f'An error occurred: {str(e)}'}), 500
+
 
 
 @app.route('/api/save_image', methods=['POST'])
